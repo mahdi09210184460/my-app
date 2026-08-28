@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
-
-import '../services/supabase_service.dart';
+import '../services/wallet_service.dart';
+import '../models/coin_transaction_model.dart';
+import '../core/theme/app_colors.dart';
+import '../widgets/app_loading.dart';
+import '../widgets/app_empty_state.dart';
+import '../widgets/app_error_state.dart';
+import 'buy_coins_screen.dart';
+import 'package:intl/intl.dart' as intl;
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -10,317 +16,250 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  int _points = 0;
+  int _balance = 0;
+  List<CoinTransactionModel> _transactions = [];
   bool _isLoading = true;
-  List<Map<String, dynamic>> _transactions = [];
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadWallet();
+    _loadData();
   }
 
-  Future<void> _loadWallet() async {
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
-      final supabase = SupabaseService.client;
-      final user = supabase.auth.currentUser;
-
-      if (user == null) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-
-      final profile = await supabase
-          .from('profiles')
-          .select('points')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final transactions = await supabase
-          .from('coin_transactions')
-          .select(
-        'id, amount, balance_after, type, description, created_at',
-      )
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (!mounted) return;
-
+      final balance = await WalletService.getBalance();
+      final txs = await WalletService.getTransactions();
       setState(() {
-        _points = (profile?['points'] as num?)?.toInt() ?? 0;
-
-        _transactions = List<Map<String, dynamic>>.from(
-          transactions,
-        );
-
+        _balance = balance;
+        _transactions = txs;
         _isLoading = false;
       });
-    } catch (_) {
-      if (!mounted) return;
-
+    } catch (e) {
       setState(() {
         _isLoading = false;
+        _error = 'خطا در دریافت اطلاعات کیف پول';
       });
-
-      _showMessage(
-        'دریافت اطلاعات کیف پول انجام نشد.',
-      );
     }
-  }
-
-  String _transactionTitle(Map<String, dynamic> transaction) {
-    final description = transaction['description'];
-
-    if (description != null &&
-        description.toString().trim().isNotEmpty) {
-      return description.toString();
-    }
-
-    final type = transaction['type']?.toString();
-
-    switch (type) {
-      case 'signup_bonus':
-        return 'هدیه ثبت‌نام';
-
-      case 'game_reward':
-        return 'جایزه بازی';
-
-      case 'game_entry':
-        return 'ورود به بازی';
-
-      case 'daily_reward':
-        return 'پاداش روزانه';
-
-      default:
-        return 'تراکنش سکه';
-    }
-  }
-
-  IconData _transactionIcon(Map<String, dynamic> transaction) {
-    final amount =
-        (transaction['amount'] as num?)?.toInt() ?? 0;
-
-    if (amount > 0) {
-      return Icons.add_circle_outline;
-    }
-
-    return Icons.remove_circle_outline;
-  }
-
-  String _formatAmount(Map<String, dynamic> transaction) {
-    final amount =
-        (transaction['amount'] as num?)?.toInt() ?? 0;
-
-    if (amount > 0) {
-      return '+$amount';
-    }
-
-    return amount.toString();
-  }
-
-  String _formatDate(String? value) {
-    if (value == null) return '';
-
-    try {
-      final date = DateTime.parse(value).toLocal();
-
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-
-      final hour = date.hour.toString().padLeft(2, '0');
-      final minute = date.minute.toString().padLeft(2, '0');
-
-      return '$year/$month/$day - $hour:$minute';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'کیف پول',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          centerTitle: true,
-        ),
-        body: _isLoading
-            ? const Center(
-          child: CircularProgressIndicator(),
-        )
-            : RefreshIndicator(
-          onRefresh: _loadWallet,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildBalanceCard(),
-
-              const SizedBox(height: 28),
-
-              const Text(
-                'تاریخچه سکه‌ها',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              if (_transactions.isEmpty)
-                _buildEmptyState()
-              else
-                ..._transactions.map(
-                  _buildTransactionItem,
-                ),
-            ],
-          ),
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('کیف پول'),
+        elevation: 0,
       ),
+      body: _isLoading
+          ? const AppLoading(message: 'در حال دریافت اطلاعات مالی...')
+          : _error != null
+              ? AppErrorState(message: _error!, onRetry: _loadData)
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(child: _buildBalanceCard()),
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                          child: Text(
+                            'تراکنش‌های اخیر',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      _transactions.isEmpty
+                          ? const SliverFillRemaining(
+                              child: AppEmptyState(
+                                title: 'تراکنشی ثبت نشده است',
+                                message: 'هنوز فعالیتی که شامل تغییر سکه باشد انجام نداده‌اید.',
+                              ),
+                            )
+                          : SliverPadding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _TransactionTile(tx: _transactions[index]),
+                                  childCount: _transactions.length,
+                                ),
+                              ),
+                            ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 30)),
+                    ],
+                  ),
+                ),
     );
   }
 
   Widget _buildBalanceCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.monetization_on,
-              size: 65,
-            ),
-
-            const SizedBox(height: 12),
-
-            const Text(
-              'موجودی سکه',
-              style: TextStyle(
-                fontSize: 16,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              '$_points',
-              style: const TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 4),
-
-            const Text(
-              'سکه',
-              style: TextStyle(
-                fontSize: 15,
-              ),
-            ),
-          ],
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primaryPurple, AppColors.primaryPurpleDark],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
         ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryPurple.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          )
+        ],
       ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          children: [
-            Icon(
-              Icons.receipt_long_outlined,
-              size: 55,
-              color: Colors.grey.shade500,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'هنوز تراکنشی ثبت نشده است.',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTransactionItem(
-      Map<String, dynamic> transaction,
-      ) {
-    final amount =
-        (transaction['amount'] as num?)?.toInt() ?? 0;
-
-    final isPositive = amount > 0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Icon(
-            _transactionIcon(transaction),
+      child: Column(
+        children: [
+          const Text(
+            'موجودی فعلی شما',
+            style: TextStyle(color: Colors.white70, fontSize: 15),
           ),
-        ),
-        title: Text(
-          _transactionTitle(transaction),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        subtitle: Text(
-          _formatDate(
-            transaction['created_at']?.toString(),
-          ),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _formatAmount(transaction),
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isPositive
-                    ? Colors.green
-                    : Colors.red,
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.monetization_on, color: AppColors.coinGold, size: 40),
+              const SizedBox(width: 12),
+              Text(
+                '$_balance',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 45,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
               ),
-            ),
-            Text(
-              'موجودی: ${transaction['balance_after'] ?? 0}',
-              style: const TextStyle(
-                fontSize: 11,
+              const SizedBox(width: 10),
+              const Text(
+                'سکه',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BuyCoinsScreen())).then((_) => _loadData()),
+                  icon: const Icon(Icons.add_shopping_cart, size: 18),
+                  label: const Text('خرید سکه'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.redeem, size: 18),
+                  label: const Text('کد هدیه'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
+class _TransactionTile extends StatelessWidget {
+  final CoinTransactionModel tx;
+  const _TransactionTile({required this.tx});
 
+  @override
+  Widget build(BuildContext context) {
+    final bool isPositive = tx.amount > 0;
+    final String dateStr = intl.DateFormat('yyyy/MM/dd HH:mm').format(tx.createdAt);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.divider.withValues(alpha: 0.1)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _getIconForType(tx.type, isPositive),
+                color: isPositive ? Colors.green : Colors.red,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tx.description,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${isPositive ? "+" : ""}${tx.amount}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                    color: isPositive ? Colors.green : Colors.red,
+                  ),
+                ),
+                Text(
+                  'سکه',
+                  style: TextStyle(fontSize: 10, color: isPositive ? Colors.green : Colors.red),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getIconForType(String type, bool isPositive) {
+    if (type.contains('game')) return Icons.sports_esports;
+    if (type.contains('shop')) return Icons.shopping_bag;
+    if (type.contains('reward') || type.contains('bonus')) return Icons.card_giftcard;
+    return isPositive ? Icons.add_circle_outline : Icons.remove_circle_outline;
+  }
+}

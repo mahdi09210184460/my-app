@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-
 import 'auth/login_screen.dart';
-import 'home/home_screen.dart';
+import 'main_layout.dart';
 import 'services/supabase_service.dart';
+import 'core/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await SupabaseService.initialize();
-
   runApp(const SekeChiApp());
 }
 
@@ -21,12 +18,7 @@ class SekeChiApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'سکه‌چی',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.deepPurple,
-        brightness: Brightness.light,
-        textTheme: GoogleFonts.vazirmatnTextTheme(),
-      ),
+      theme: AppTheme.lightTheme,
       home: const SplashScreen(),
     );
   }
@@ -48,22 +40,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkLogin() async {
     await Future.delayed(const Duration(seconds: 2));
-
     if (!mounted) return;
 
     final session = SupabaseService.client.auth.currentSession;
-
     if (session != null) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const HomeScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const MainLayout()),
       );
     } else {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
     }
   }
@@ -81,43 +67,17 @@ class _SplashScreenState extends State<SplashScreen> {
                 width: 110,
                 height: 110,
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple,
+                  color: Theme.of(context).colorScheme.primary,
                   borderRadius: BorderRadius.circular(30),
                 ),
-                child: const Icon(
-                  Icons.casino,
-                  color: Colors.white,
-                  size: 60,
-                ),
+                child: const Icon(Icons.casino, color: Colors.white, size: 60),
               ),
-
               const SizedBox(height: 24),
-
-              const Text(
-                'سکه‌چی',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
+              const Text('سکه‌چی', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-
-              const Text(
-                'دنیای بازی‌های رومیزی',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-              ),
-
+              const Text('دنیای بازی‌های رومیزی', style: TextStyle(fontSize: 16, color: Colors.grey)),
               const SizedBox(height: 35),
-
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(),
-              ),
+              const SizedBox(width: 28, height: 28, child: CircularProgressIndicator()),
             ],
           ),
         ),
@@ -125,15 +85,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
